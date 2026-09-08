@@ -1,0 +1,152 @@
+rules_version = '2';
+
+// ===============================================================
+// Fixora Security Rules (Phase 1 & Phase 2)
+// ===============================================================
+// Collections:
+//   - users: User profiles with immutable roles and owner-only access.
+//   - issues: Campus issues reported by students; managed by admins.
+//   - issue_updates: Append-only lifecycle timeline entries.
+//   - responsible_people: Campus facility staff directory.
+//
+// Security Guarantees:
+//   - Privilege escalation prevention: Regular users cannot grant themselves admin.
+//   - RBAC isolation: Students can only read/create their own tickets.
+//   - Lifecycle integrity: Only admins can update status or overrides.
+//   - Audit history immutability: Updates are append-only (cannot be updated or deleted).
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Check if authenticated user is the resource owner
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Fetch existing user data for role checking
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Determine if caller holds administrative privileges
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.get('role', '') == 'admin' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         getUserData().role == 'admin')
+      );
+    }
+
+    // Email format validation - strictly restricted to @vitbhopal.ac.in
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 100 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@vitbhopal\\.ac\\.in$');
+    }
+
+    // Domain validator for user document
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
+             data.keys().hasOnly(['uid', 'name', 'email', 'role', 'createdAt', 'updatedAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['student', 'admin'] &&
+             data.createdAt is timestamp &&
+             (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // ===============================================================
+    // Users Collection Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      allow create: if isOwner(userId) &&
+                       isValidUser(request.resource.data) &&
+                       (request.resource.data.role == 'student' || isAdmin());
+
+      allow update: if isOwner(userId) &&
+                       isValidUser(request.resource.data) &&
+                       request.resource.data.role == resource.data.role &&
+                       request.resource.data.uid == resource.data.uid &&
+                       request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Issues Collection Rules (Phase 2)
+    // ===============================================================
+
+    match /issues/{issueId} {
+      // Students can only read their own reported issues; admins can read all
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.reporterId == request.auth.uid);
+
+      // Students can create issues with initial status 'Submitted' and reporterId matching their UID
+      allow create: if isAuthenticated() &&
+                       request.resource.data.reporterId == request.auth.uid &&
+                       request.resource.data.status == 'Submitted';
+
+      // Only administrators can update issue details, status, or technician assignments
+      allow update: if isAdmin();
+
+      // Only administrators can delete issue records
+      allow delete: if isAdmin();
+    }
+
+    // ===============================================================
+    // Issue Updates (Append-Only Audit Timeline)
+    // ===============================================================
+
+    match /issue_updates/{updateId} {
+      // Authenticated users can read updates
+      allow read: if isAuthenticated();
+
+      // Updates can be created by admin or by the student submitting the initial issue update
+      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.updatedBy == request.auth.uid);
+
+      // Lifecycle updates are append-only and strictly immutable
+      allow update, delete: if false;
+    }
+
+    // ===============================================================
+    // Responsible People Directory
+    // ===============================================================
+
+    match /responsible_people/{personId} {
+      // All authenticated campus members can view facility staff directory
+      allow read: if isAuthenticated();
+
+      // Only administrators can add or update responsible staff
+      allow write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Admin-Only Audit Logs
+    // ===============================================================
+
+    match /admin_audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ===============================================================
+    // Default Deny
+    // ===============================================================
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

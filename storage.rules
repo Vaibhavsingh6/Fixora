@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Campus Issue Photographs: strictly restricted by user ownership and admin clearance
+    match /issues/{userId}/{issueId}/{fileName} {
+      // Only the ticket owner or verified campus administrators can view issue photos
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true
+      );
+
+      // Only the authenticated student can upload to their own issue directory
+      // Enforces strict 5MB maximum file size and verified image MIME types
+      allow write: if request.auth != null &&
+        request.auth.uid == userId &&
+        request.resource.size <= 5 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)');
+
+      // Deletion restricted to the ticket owner or campus administrators
+      allow delete: if request.auth != null && (
+        request.auth.uid == userId ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true
+      );
+    }
+  }
+}
