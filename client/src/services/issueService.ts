@@ -24,16 +24,19 @@ async function getAuthHeader(): Promise<Record<string, string>> {
   }
 
   // Fallback for development/demo mode when live Firebase project credentials are not configured
-  const demoSession = typeof window !== 'undefined' ? sessionStorage.getItem('fixora_demo_session') : null;
-  if (demoSession) {
-    try {
-      const parsed = JSON.parse(demoSession);
-      return {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer demo-token:${parsed.uid || 'demo-user'}:${parsed.role || 'student'}`,
-      };
-    } catch {
-      // Ignore JSON parse error
+  // Strictly disallowed in production
+  if (!import.meta.env.PROD) {
+    const demoSession = typeof window !== 'undefined' ? sessionStorage.getItem('fixora_demo_session') : null;
+    if (demoSession) {
+      try {
+        const parsed = JSON.parse(demoSession);
+        return {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer demo-token:${parsed.uid || 'demo-user'}:${parsed.role || 'student'}`,
+        };
+      } catch {
+        // Ignore JSON parse error
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { UserRole } from '@fixora/shared';
 import { isAllowedInstitutionalEmail, INSTITUTION_RESTRICTED_MESSAGE } from '@fixora/shared';
-import { adminAuth, adminDb } from '../config/firebaseAdmin.js';
+import { adminAuth, adminDb, firebaseProjectId } from '../config/firebaseAdmin.js';
 import { AppError } from './errorHandler.js';
 
 export interface AuthenticatedUser {
@@ -43,18 +43,59 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let tokenRole: UserRole | undefined;
     let emailVerified = false;
 
-    // Secure testing and local development fixture support
-    if (
-      (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') &&
-      (token.startsWith('test-token:') || token.startsWith('demo-token:'))
-    ) {
+    // Demo/test fixture tokens handling: Strictly forbidden in production
+    const isFixtureToken = token.startsWith('test-token:') || token.startsWith('demo-token:');
+
+    if (isFixtureToken) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn('[Auth] Token verification failed: Demo/fixture token rejected in production environment.');
+        next(new AppError('Invalid or expired authentication token', 401));
+        return;
+      }
+
+      // Secure testing and local development fixture support
       const parts = token.split(':');
       decodedUid = parts[1] || 'demo-user';
       tokenRole = parts[2] === 'admin' ? 'admin' : 'student';
       decodedEmail = parts[3] || `${decodedUid}@vitbhopal.ac.in`;
       emailVerified = parts[4] !== undefined ? parts[4] === 'true' : true;
     } else {
-      const decoded = await adminAuth.verifyIdToken(token);
+      let decoded;
+      try {
+        decoded = await adminAuth.verifyIdToken(token);
+      } catch (verifyErr: any) {
+        const code = verifyErr?.code || 'unknown';
+        const message = verifyErr?.message || '';
+
+        // Preserve diagnostic categorization for server logs without exposing sensitive details or full tokens
+        if (code === 'auth/id-token-expired') {
+          console.warn('[Auth] Token verification failed: Expired ID token.');
+        } else if (code === 'auth/id-token-revoked') {
+          console.warn('[Auth] Token verification failed: Revoked ID token.');
+        } else if (
+          message.includes('aud') ||
+          message.includes('audience') ||
+          code === 'auth/project-id-mismatch'
+        ) {
+          console.warn(
+            `[Auth] Token verification failed: Audience/Project ID mismatch (configured project: "${firebaseProjectId}").`
+          );
+        } else if (
+          code === 'auth/argument-error' ||
+          message.includes('Decoding') ||
+          message.includes('malformed')
+        ) {
+          console.warn('[Auth] Token verification failed: Malformed or unparseable ID token.');
+        } else if (code === 'auth/invalid-id-token' || message.includes('signature')) {
+          console.warn('[Auth] Token verification failed: Invalid token signature.');
+        } else {
+          console.warn(`[Auth] Token verification failed: [${code}] ${message}`);
+        }
+
+        next(new AppError('Invalid or expired authentication token', 401));
+        return;
+      }
+
       decodedUid = decoded.uid;
       decodedEmail = decoded.email || '';
       tokenRole = decoded.role === 'admin' ? 'admin' : undefined;
@@ -106,6 +147,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
 
     next();
   } catch (error) {
+    console.warn('[Auth] Unexpected error in requireAuth:', (error as Error).message);
     next(new AppError('Invalid or expired authentication token', 401));
   }
 }
