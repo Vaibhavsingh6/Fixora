@@ -14,7 +14,7 @@ import {
   MapPin,
   Camera,
 } from 'lucide-react';
-import type { Issue } from '@fixora/shared';
+import { formatStructuredLocation, type Issue } from '@fixora/shared';
 import { fetchIssues } from '../services/issueService';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { StatusBadge } from '../components/StatusBadge';
@@ -231,10 +231,10 @@ export const StudentDashboard: React.FC = () => {
                     )}
                   </div>
                   <h3 className="text-sm font-semibold text-slate-800">{issue.title}</h3>
-                  <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                  <div className="text-xs text-slate-500 flex items-center gap-1.5 truncate">
                     <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-                    <span>
-                      {issue.locationType} - {issue.specificLocation}
+                    <span className="truncate" title={formatStructuredLocation(issue)}>
+                      {formatStructuredLocation(issue)}
                     </span>
                   </div>
                 </div>

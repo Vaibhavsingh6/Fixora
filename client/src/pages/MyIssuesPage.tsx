@@ -10,7 +10,7 @@ import {
   Camera,
   RotateCcw,
 } from 'lucide-react';
-import type { Issue, IssueStatus } from '@fixora/shared';
+import { formatStructuredLocation, type Issue, type IssueStatus } from '@fixora/shared';
 import { fetchIssues } from '../services/issueService';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorAlert } from '../components/ErrorAlert';
@@ -210,11 +210,7 @@ export const MyIssuesPage: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
                     <span className="flex items-center gap-1.5">
                       <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-                      <span>
-                        {issue.locationType}
-                        {issue.academicBlock ? ` (${issue.academicBlock})` : ''}
-                        {issue.hostelBlock ? ` (${issue.hostelBlock})` : ''} - {issue.specificLocation}
-                      </span>
+                      <span>{formatStructuredLocation(issue)}</span>
                     </span>
 
                     <span className="flex items-center gap-1.5">

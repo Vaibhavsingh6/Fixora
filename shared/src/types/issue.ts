@@ -1,4 +1,9 @@
-import type { LocationType, AcademicBlock, HostelBlock } from '../config/locations.js';
+import type {
+  LocationType,
+  AcademicBlock,
+  HostelBlock,
+  AnyLocationType,
+} from '../config/locations.js';
 
 export const ISSUE_CATEGORIES = [
   'Electrical',
@@ -70,7 +75,10 @@ export interface Issue {
   severity: IssueSeverity;
   aiSuggestedDepartment: IssueDepartment;
   department: IssueDepartment;
-  locationType: LocationType;
+  locationType: LocationType | AnyLocationType | string;
+  buildingOrBlock?: string;
+  specificArea?: string;
+  floor?: string;
   academicBlock?: AcademicBlock | string;
   hostelBlock?: HostelBlock | string;
   specificLocation: string;

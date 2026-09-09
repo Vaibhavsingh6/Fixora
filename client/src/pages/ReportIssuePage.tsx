@@ -18,8 +18,10 @@ import {
 } from 'lucide-react';
 import {
   LOCATION_TYPES,
-  ACADEMIC_BLOCKS,
+  ACADEMIC_BUILDINGS,
   HOSTEL_BLOCKS,
+  CAMPUS_FLOORS,
+  getSpecificAreasForLocation,
   ISSUE_CATEGORIES,
   ISSUE_SEVERITIES,
   type LocationType,
@@ -46,10 +48,32 @@ export const ReportIssuePage: React.FC = () => {
   // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [locationType, setLocationType] = useState<LocationType>('Academic Block');
-  const [academicBlock, setAcademicBlock] = useState<string>(ACADEMIC_BLOCKS[0]);
-  const [hostelBlock, setHostelBlock] = useState<string>(HOSTEL_BLOCKS[0]);
+  const [locationType, setLocationType] = useState<LocationType>('Academic Area');
+  const [buildingOrBlock, setBuildingOrBlock] = useState<string>(ACADEMIC_BUILDINGS[0]);
+  const [specificArea, setSpecificArea] = useState<string>(
+    getSpecificAreasForLocation('Academic Area', ACADEMIC_BUILDINGS[0])[0] || 'Classroom'
+  );
+  const [floor, setFloor] = useState<string>('Ground Floor');
   const [specificLocation, setSpecificLocation] = useState('');
+
+  const handleLocationTypeChange = (newType: LocationType) => {
+    setLocationType(newType);
+    let defaultBuilding = '';
+    if (newType === 'Academic Area') {
+      defaultBuilding = ACADEMIC_BUILDINGS[0];
+    } else if (newType === 'Hostel') {
+      defaultBuilding = HOSTEL_BLOCKS[0];
+    }
+    setBuildingOrBlock(defaultBuilding);
+    const availableAreas = getSpecificAreasForLocation(newType, defaultBuilding);
+    setSpecificArea(availableAreas[0] || 'Other');
+  };
+
+  const handleBuildingChange = (newBuilding: string) => {
+    setBuildingOrBlock(newBuilding);
+    const availableAreas = getSpecificAreasForLocation(locationType, newBuilding);
+    setSpecificArea(availableAreas[0] || 'Other');
+  };
 
   // Optional Photo State
   const [selectedImage, setSelectedImage] = useState<SelectedImageData | null>(null);
@@ -137,12 +161,18 @@ export const ReportIssuePage: React.FC = () => {
         }
       }
 
+      const isAcademic = locationType === 'Academic Area' || (locationType as string) === 'Academic Block';
+      const isHostel = locationType === 'Hostel' || (locationType as string) === 'Hostel Block';
+
       const result = await analyzeIssueWithAI({
         title,
         description,
         locationType,
-        academicBlock: locationType === 'Academic Block' ? academicBlock : undefined,
-        hostelBlock: locationType === 'Hostel Block' ? hostelBlock : undefined,
+        buildingOrBlock: isAcademic || isHostel ? buildingOrBlock : undefined,
+        specificArea,
+        floor,
+        academicBlock: isAcademic ? buildingOrBlock : undefined,
+        hostelBlock: isHostel ? buildingOrBlock : undefined,
         specificLocation,
         image: imagePayload,
       });
@@ -185,6 +215,9 @@ export const ReportIssuePage: React.FC = () => {
           ? aiAnalysis.improvedDescription
           : description;
 
+      const isAcademic = locationType === 'Academic Area' || (locationType as string) === 'Academic Block';
+      const isHostel = locationType === 'Hostel' || (locationType as string) === 'Hostel Block';
+
       const issue = await reportIssue({
         title,
         description: finalDescription,
@@ -195,8 +228,11 @@ export const ReportIssuePage: React.FC = () => {
         aiSuggestedDepartment: aiAnalysis ? aiAnalysis.suggestedDepartment : selectedDepartment,
         department: selectedDepartment,
         locationType,
-        academicBlock: locationType === 'Academic Block' ? academicBlock : undefined,
-        hostelBlock: locationType === 'Hostel Block' ? hostelBlock : undefined,
+        buildingOrBlock: isAcademic || isHostel ? buildingOrBlock : undefined,
+        specificArea,
+        floor,
+        academicBlock: isAcademic ? buildingOrBlock : undefined,
+        hostelBlock: isHostel ? buildingOrBlock : undefined,
         specificLocation,
         hasImage: Boolean(selectedImage && imageStoragePath),
         imageStoragePath,
@@ -397,8 +433,14 @@ export const ReportIssuePage: React.FC = () => {
               <p className="text-xs text-slate-500 mt-1">Minimum 10 characters.</p>
             </div>
 
-            {/* Location Type */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Hierarchical Campus Location Selection */}
+            <div className="space-y-4 p-4 bg-slate-50/80 border border-slate-200 rounded-2xl">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                <MapPin className="w-4 h-4 text-indigo-600" aria-hidden="true" />
+                <span>Campus Location Hierarchy</span>
+              </div>
+
+              {/* Step 1: Location Type */}
               <div>
                 <label htmlFor="locationType" className="block text-sm font-semibold text-slate-700 mb-1">
                   Location Type <span className="text-red-600">*</span>
@@ -406,7 +448,7 @@ export const ReportIssuePage: React.FC = () => {
                 <select
                   id="locationType"
                   value={locationType}
-                  onChange={(e) => setLocationType(e.target.value as LocationType)}
+                  onChange={(e) => handleLocationTypeChange(e.target.value as LocationType)}
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
                 >
                   {LOCATION_TYPES.map((type) => (
@@ -417,36 +459,36 @@ export const ReportIssuePage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Conditional Block Selector */}
-              {locationType === 'Academic Block' && (
+              {/* Step 2: Building / Block (Conditional for Academic Area and Hostel) */}
+              {locationType === 'Academic Area' && (
                 <div>
-                  <label htmlFor="academicBlock" className="block text-sm font-semibold text-slate-700 mb-1">
-                    Academic Block
+                  <label htmlFor="academicBuilding" className="block text-sm font-semibold text-slate-700 mb-1">
+                    Building / Block <span className="text-red-600">*</span>
                   </label>
                   <select
-                    id="academicBlock"
-                    value={academicBlock}
-                    onChange={(e) => setAcademicBlock(e.target.value)}
+                    id="academicBuilding"
+                    value={buildingOrBlock}
+                    onChange={(e) => handleBuildingChange(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
                   >
-                    {ACADEMIC_BLOCKS.map((block) => (
-                      <option key={block} value={block}>
-                        {block}
+                    {ACADEMIC_BUILDINGS.map((building) => (
+                      <option key={building} value={building}>
+                        {building}
                       </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              {locationType === 'Hostel Block' && (
+              {locationType === 'Hostel' && (
                 <div>
                   <label htmlFor="hostelBlock" className="block text-sm font-semibold text-slate-700 mb-1">
-                    Hostel Block
+                    Hostel Block <span className="text-red-600">*</span>
                   </label>
                   <select
                     id="hostelBlock"
-                    value={hostelBlock}
-                    onChange={(e) => setHostelBlock(e.target.value)}
+                    value={buildingOrBlock}
+                    onChange={(e) => handleBuildingChange(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
                   >
                     {HOSTEL_BLOCKS.map((block) => (
@@ -457,24 +499,66 @@ export const ReportIssuePage: React.FC = () => {
                   </select>
                 </div>
               )}
-            </div>
 
-            {/* Specific Location */}
-            <div>
-              <label htmlFor="specificLocation" className="block text-sm font-semibold text-slate-700 mb-1">
-                Specific Location <span className="text-red-600">*</span>
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5 pointer-events-none" aria-hidden="true" />
-                <input
-                  id="specificLocation"
-                  type="text"
-                  value={specificLocation}
-                  onChange={(e) => setSpecificLocation(e.target.value)}
-                  placeholder="e.g. Room 304, 3rd Floor East Wing or Corridor near Elevator"
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
-                  required
-                />
+              {/* Step 3: Specific Area & Step 4: Floor */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="specificArea" className="block text-sm font-semibold text-slate-700 mb-1">
+                    {locationType === 'Academic Area' || locationType === 'Hostel' ? 'Specific Area' : 'Area Type'}
+                  </label>
+                  <select
+                    id="specificArea"
+                    value={specificArea}
+                    onChange={(e) => setSpecificArea(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
+                  >
+                    {getSpecificAreasForLocation(locationType, buildingOrBlock).map((area) => (
+                      <option key={area} value={area}>
+                        {area}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="floorSelect" className="block text-sm font-semibold text-slate-700 mb-1">
+                    Floor Level <span className="text-slate-400 font-normal">(optional)</span>
+                  </label>
+                  <select
+                    id="floorSelect"
+                    value={floor}
+                    onChange={(e) => setFloor(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
+                  >
+                    {CAMPUS_FLOORS.map((fl) => (
+                      <option key={fl} value={fl}>
+                        {fl}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Step 5: Additional Location Details */}
+              <div>
+                <label htmlFor="specificLocation" className="block text-sm font-semibold text-slate-700 mb-1">
+                  Additional Location Details <span className="text-red-600">*</span>
+                </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5 pointer-events-none" aria-hidden="true" />
+                  <input
+                    id="specificLocation"
+                    type="text"
+                    value={specificLocation}
+                    onChange={(e) => setSpecificLocation(e.target.value)}
+                    placeholder="e.g. 3rd floor, near room 312 or Room AB1-204"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-slate-900 text-sm"
+                    required
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Provide exact room number, landmark, or nearby room reference.
+                </p>
               </div>
             </div>
 

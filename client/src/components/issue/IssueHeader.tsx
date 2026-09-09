@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, User, Wrench, CheckCircle2, Camera, AlertCircle, ZoomIn } from 'lucide-react';
-import type { Issue } from '@fixora/shared';
+import { formatStructuredLocation, type Issue } from '@fixora/shared';
 import { StatusBadge } from '../StatusBadge';
 import { SeverityBadge } from '../SeverityBadge';
 import { fetchIssueImageBlob } from '../../services/issueService';
@@ -68,12 +68,11 @@ export const IssueHeader: React.FC<IssueHeaderProps> = ({ issue }) => {
       <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">{issue.title}</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-600 pt-3 border-t border-slate-100">
-        <div className="flex items-center gap-2">
-          <MapPin className="w-4 h-4 text-slate-500 shrink-0" aria-hidden="true" />
+        <div className="flex items-start gap-2">
+          <MapPin className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" aria-hidden="true" />
           <span>
-            <strong className="text-slate-800">Location:</strong> {issue.locationType}
-            {issue.academicBlock ? ` • ${issue.academicBlock}` : ''}
-            {issue.hostelBlock ? ` • ${issue.hostelBlock}` : ''} - {issue.specificLocation}
+            <strong className="text-slate-800">Location:</strong>{' '}
+            {formatStructuredLocation(issue)}
           </span>
         </div>
         <div className="flex items-center gap-2">

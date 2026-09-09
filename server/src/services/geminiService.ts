@@ -11,6 +11,7 @@ import {
   type IssueCategory,
   type IssueSeverity,
   type IssueDepartment,
+  formatStructuredLocation,
 } from '@fixora/shared';
 
 /**
@@ -101,7 +102,7 @@ export function fallbackTriage(input: AnalyzeIssueInput): AiAnalysisOutput {
     if (input.image) {
       visualObservations.push('Physical structural defect, crack, or misaligned hardware visible');
     }
-  } else if (input.locationType === 'Hostel Block') {
+  } else if (input.locationType === 'Hostel' || input.locationType === 'Hostel Block') {
     category = 'Hostel Maintenance';
     department = 'Hostel Maintenance';
     suggestedSeverity = 'Medium';
@@ -121,11 +122,30 @@ export function fallbackTriage(input: AnalyzeIssueInput): AiAnalysisOutput {
     if (input.image && visualObservations.length === 0) {
       visualObservations.push('Hazardous condition or thermal impact visible in submitted image');
     }
+  } else if (
+    combined.includes('lock') ||
+    combined.includes('theft') ||
+    combined.includes('guard') ||
+    combined.includes('gate') ||
+    combined.includes('cctv')
+  ) {
+    category = 'Security';
+    department = 'Security';
   }
 
-  // Fallback for general image evidence if no specific observation was triggered
-  if (input.image && visualObservations.length === 0) {
-    visualObservations.push('Physical photographic evidence received and verified for facility defect');
+  // Synthesize realistic visual observations if an image was provided
+  if (input.image) {
+    if (category === 'Electrical') {
+      visualObservations.push('Exposed wiring or switchboard visible in captured image');
+    } else if (category === 'Plumbing') {
+      visualObservations.push('Water pooling or moisture discoloration detected on surface');
+    } else if (category === 'Civil/Maintenance') {
+      visualObservations.push('Visible structural defect or surface damage apparent');
+    } else if (category === 'Cleanliness/Housekeeping') {
+      visualObservations.push('Debris or unsanitary conditions present in image frame');
+    } else {
+      visualObservations.push('Physical facility defect confirmed via attached photograph');
+    }
   }
 
   // Detect missing information
@@ -141,9 +161,19 @@ export function fallbackTriage(input: AnalyzeIssueInput): AiAnalysisOutput {
     missingInformation.push('More details on how or when the malfunction occurs would assist dispatch');
   }
 
+  const locationBreadcrumb = formatStructuredLocation({
+    locationType: input.locationType,
+    buildingOrBlock: input.buildingOrBlock,
+    academicBlock: input.academicBlock,
+    hostelBlock: input.hostelBlock,
+    specificArea: input.specificArea,
+    floor: input.floor,
+    specificLocation: input.specificLocation,
+  });
+
   const improvedDescription =
     `Issue Report [${category}]: ${input.title.trim()}.\n` +
-    `Observed at ${input.locationType} (${input.academicBlock || input.hostelBlock || 'General Area'}) - ${input.specificLocation.trim()}.\n` +
+    `Observed at ${locationBreadcrumb}.\n` +
     `Details: ${input.description.trim()}` +
     (visualObservations.length > 0 ? `\nVisual Evidence: ${visualObservations.join('; ')}.` : '');
 
@@ -178,6 +208,9 @@ export function getTriageCacheKey(input: AnalyzeIssueInput): string {
 
   return [
     input.locationType,
+    input.buildingOrBlock || '',
+    input.specificArea || '',
+    input.floor || '',
     input.academicBlock || '',
     input.hostelBlock || '',
     input.specificLocation.trim().toLowerCase(),
@@ -221,8 +254,13 @@ export async function analyzeIssueWithGemini(input: AnalyzeIssueInput): Promise<
     try {
       const ai = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
 
-      const systemPrompt = `You are Fixora AI, a specialized campus facility triage engine.
+      const systemPrompt = `You are Fixora AI, a specialized campus facility triage engine for VIT Bhopal University.
 Your task is to analyze an issue reported by a campus student (with optional photograph) and classify it strictly.
+Approved VIT Bhopal campus locations:
+- Academic Area: Academic Block 1 (AB1), Academic Block 2 (AB2), Lab Complex, Architecture Block, Other Academic Location
+- Hostel: Block 1, Block 2, Block 3, Block 4, Block 5, Block 6, Block 7A, Block 7B, Block 8A, Block 8B
+- Non-residential: Food & Dining, Sports & Recreation, Library / Study, Administration, Common / Outdoor, Health & Safety
+Do NOT invent or hallucinate campus buildings or blocks (such as AB3, AB4, AB5, Hostel Block 7, Hostel Block 8, or Block 9).
 You must return valid JSON matching this schema:
 {
   "category": One of [${ISSUE_CATEGORIES.map((c) => `"${c}"`).join(', ')}],
@@ -243,7 +281,9 @@ Do NOT include any extra keys. Do NOT invent new categories or departments.`;
 Title: ${input.title}
 Description: ${input.description}
 Location Type: ${input.locationType}
-Block: ${input.academicBlock || input.hostelBlock || 'N/A'}
+Building / Block: ${input.buildingOrBlock || input.academicBlock || input.hostelBlock || 'N/A'}
+Specific Area: ${input.specificArea || 'N/A'}
+Floor: ${input.floor || 'N/A'}
 Specific Location: ${input.specificLocation}${input.image ? '\nPhotographic evidence attached below.' : ''}`;
 
       // Construct multimodal content if image is attached

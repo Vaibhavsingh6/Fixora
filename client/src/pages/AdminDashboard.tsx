@@ -16,15 +16,14 @@ import {
   Camera,
   RotateCcw,
 } from 'lucide-react';
-import type {
-  Issue,
-  IssueStatus,
-  IssueDepartment,
-  IssueSeverity,
-} from '@fixora/shared';
 import {
   ISSUE_DEPARTMENTS,
   ISSUE_SEVERITIES,
+  formatStructuredLocation,
+  type Issue,
+  type IssueStatus,
+  type IssueDepartment,
+  type IssueSeverity,
 } from '@fixora/shared';
 import { fetchIssues } from '../services/issueService';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -380,8 +379,8 @@ export const AdminDashboard: React.FC = () => {
                         </Link>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5 truncate">
                           <MapPin className="w-3 h-3 text-slate-500 shrink-0" aria-hidden="true" />
-                          <span>
-                            {issue.locationType} - {issue.specificLocation}
+                          <span className="truncate" title={formatStructuredLocation(issue)}>
+                            {formatStructuredLocation(issue)}
                           </span>
                         </div>
                       </td>
@@ -444,10 +443,10 @@ export const AdminDashboard: React.FC = () => {
 
                   <div>
                     <h3 className="text-sm font-bold text-slate-900 leading-snug">{issue.title}</h3>
-                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                      <span className="truncate">
-                        {issue.locationType} - {issue.specificLocation}
+                    <div className="flex items-start gap-1 text-xs text-slate-500 mt-1">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+                      <span>
+                        {formatStructuredLocation(issue)}
                       </span>
                     </div>
                   </div>

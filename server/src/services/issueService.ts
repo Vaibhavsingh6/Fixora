@@ -68,8 +68,25 @@ export async function createIssue(
     aiSuggestedDepartment: input.aiSuggestedDepartment,
     department: input.department,
     locationType: input.locationType,
-    academicBlock: input.academicBlock,
-    hostelBlock: input.hostelBlock,
+    buildingOrBlock:
+      input.buildingOrBlock ||
+      (input.locationType === 'Academic Area' || input.locationType === 'Academic Block'
+        ? input.academicBlock
+        : input.locationType === 'Hostel' || input.locationType === 'Hostel Block'
+        ? input.hostelBlock
+        : undefined),
+    specificArea: input.specificArea,
+    floor: input.floor,
+    academicBlock:
+      input.academicBlock ||
+      (input.locationType === 'Academic Area' || input.locationType === 'Academic Block'
+        ? input.buildingOrBlock
+        : undefined),
+    hostelBlock:
+      input.hostelBlock ||
+      (input.locationType === 'Hostel' || input.locationType === 'Hostel Block'
+        ? input.buildingOrBlock
+        : undefined),
     specificLocation: input.specificLocation,
     status: 'Submitted',
     hasImage: input.hasImage ?? false,
@@ -164,6 +181,12 @@ export async function getIssues(
       (i) =>
         i.ticketId.toLowerCase().includes(term) ||
         i.title.toLowerCase().includes(term) ||
+        i.locationType.toLowerCase().includes(term) ||
+        (i.buildingOrBlock && i.buildingOrBlock.toLowerCase().includes(term)) ||
+        (i.specificArea && i.specificArea.toLowerCase().includes(term)) ||
+        (i.floor && i.floor.toLowerCase().includes(term)) ||
+        (i.academicBlock && i.academicBlock.toLowerCase().includes(term)) ||
+        (i.hostelBlock && i.hostelBlock.toLowerCase().includes(term)) ||
         i.specificLocation.toLowerCase().includes(term) ||
         i.description.toLowerCase().includes(term)
     );

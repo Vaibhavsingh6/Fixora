@@ -1,10 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { AnyZodObject } from 'zod';
+import type { ZodTypeAny } from 'zod';
 
 /**
  * Express middleware for validating request body against a Zod schema
  */
-export function validateBody(schema: AnyZodObject) {
+export function validateBody(schema: ZodTypeAny) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       req.body = await schema.parseAsync(req.body);
