@@ -23,20 +23,24 @@ async function getAuthHeader(): Promise<Record<string, string>> {
     };
   }
 
-  // Fallback for development/demo mode when live Firebase project credentials are not configured
-  // Strictly disallowed in production
-  if (!import.meta.env.PROD) {
-    const demoSession = typeof window !== 'undefined' ? sessionStorage.getItem('fixora_demo_session') : null;
-    if (demoSession) {
-      try {
-        const parsed = JSON.parse(demoSession);
+  // Controlled fallback for predefined PromptWars demo accounts and local test sessions
+  const demoSession = typeof window !== 'undefined' ? sessionStorage.getItem('fixora_demo_session') : null;
+  if (demoSession) {
+    try {
+      const parsed = JSON.parse(demoSession);
+      const isPredefinedDemo =
+        parsed.uid === 'demo-admin-999' ||
+        parsed.uid === 'demo-student-101' ||
+        parsed.uid === 'demo-user';
+
+      if (isPredefinedDemo) {
         return {
           'Content-Type': 'application/json',
-          Authorization: `Bearer demo-token:${parsed.uid || 'demo-user'}:${parsed.role || 'student'}`,
+          Authorization: `Bearer demo-token:${parsed.uid}:${parsed.role || 'student'}`,
         };
-      } catch {
-        // Ignore JSON parse error
       }
+    } catch {
+      // Ignore JSON parse error
     }
   }
 

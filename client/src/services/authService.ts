@@ -119,16 +119,27 @@ export async function claimAdminRole(adminSecret: string): Promise<boolean> {
   let token: string;
   if (currentUser) {
     token = await currentUser.getIdToken();
-  } else if (!import.meta.env.PROD) {
+  } else {
     const demoSession = typeof window !== 'undefined' ? sessionStorage.getItem('fixora_demo_session') : null;
     if (demoSession) {
-      const parsed = JSON.parse(demoSession);
-      token = `demo-token:${parsed.uid || 'demo-user'}:${parsed.role || 'student'}`;
+      try {
+        const parsed = JSON.parse(demoSession);
+        const isPredefinedDemo =
+          parsed.uid === 'demo-admin-999' ||
+          parsed.uid === 'demo-student-101' ||
+          parsed.uid === 'demo-user';
+
+        if (isPredefinedDemo) {
+          token = `demo-token:${parsed.uid}:${parsed.role || 'student'}`;
+        } else {
+          throw new Error('You must be authenticated to request administrative clearance.');
+        }
+      } catch {
+        throw new Error('You must be authenticated to request administrative clearance.');
+      }
     } else {
       throw new Error('You must be authenticated to request administrative clearance.');
     }
-  } else {
-    throw new Error('You must be authenticated to request administrative clearance.');
   }
 
   const res = await fetch(apiUrl('/api/auth/claim-admin'), {

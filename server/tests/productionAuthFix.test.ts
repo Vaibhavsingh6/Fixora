@@ -57,7 +57,7 @@ describe('Production Authentication & Project ID Alignment', () => {
     });
   });
 
-  describe('2. Demo Token Restriction by Environment', () => {
+  describe('2. Demo Token Restriction by Environment & Controlled DEMO_MODE', () => {
     const originalEnv = { ...process.env };
 
     beforeEach(() => {
@@ -68,20 +68,22 @@ describe('Production Authentication & Project ID Alignment', () => {
       process.env = { ...originalEnv };
     });
 
-    it('preserves demo token support in development/test environment', async () => {
+    it('preserves test token support in development/test environment', async () => {
       process.env.NODE_ENV = 'test';
 
       const res = await request(app)
         .get('/api/user/profile')
-        .set('Authorization', 'Bearer demo-token:student-uid-123:student');
+        .set('Authorization', 'Bearer test-token:student-uid-123:student');
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.user.uid).toBe('student-uid-123');
     });
 
-    it('strictly rejects demo tokens in production with 401', async () => {
+    it('strictly rejects demo tokens in production when DEMO_MODE is absent (default secure state)', async () => {
       process.env.NODE_ENV = 'production';
+      delete process.env.DEMO_MODE;
+      delete process.env.ENABLE_DEMO_MODE;
 
       const res = await request(app)
         .get('/api/user/profile')
@@ -92,12 +94,85 @@ describe('Production Authentication & Project ID Alignment', () => {
       expect(res.body.error).toBe('Invalid or expired authentication token');
     });
 
-    it('strictly rejects test tokens in production with 401', async () => {
+    it('strictly rejects demo tokens in production when DEMO_MODE is explicitly false', async () => {
       process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'false';
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('Authorization', 'Bearer demo-token:demo-admin-999:admin');
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Invalid or expired authentication token');
+    });
+
+    it('strictly rejects test tokens in production even if DEMO_MODE is true', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'true';
 
       const res = await request(app)
         .get('/api/user/profile')
         .set('Authorization', 'Bearer test-token:admin-uid:admin');
+
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error).toBe('Invalid or expired authentication token');
+    });
+
+    it('allows predefined admin demo identity in production when DEMO_MODE is true', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'true';
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('Authorization', 'Bearer demo-token:demo-admin-999:admin');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.uid).toBe('demo-admin-999');
+      expect(res.body.user.email).toBe('admin@vitbhopal.ac.in');
+      expect(res.body.user.role).toBe('admin');
+    });
+
+    it('allows predefined student demo identity in production when DEMO_MODE is true', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'true';
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('Authorization', 'Bearer demo-token:demo-student-101:student');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.uid).toBe('demo-student-101');
+      expect(res.body.user.email).toBe('student@vitbhopal.ac.in');
+      expect(res.body.user.role).toBe('student');
+    });
+
+    it('SECURITY: prevents role spoofing - student token claiming admin role is authoritatively forced to student', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'true';
+
+      // Malicious attempt: student UID with forged ':admin' role
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('Authorization', 'Bearer demo-token:demo-student-101:admin');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.user.uid).toBe('demo-student-101');
+      // Server-authoritative role must remain 'student':
+      expect(res.body.user.role).toBe('student');
+    });
+
+    it('SECURITY: strictly rejects arbitrary demo user IDs with 401', async () => {
+      process.env.NODE_ENV = 'production';
+      process.env.DEMO_MODE = 'true';
+
+      const res = await request(app)
+        .get('/api/user/profile')
+        .set('Authorization', 'Bearer demo-token:unauthorized-attacker:admin');
 
       expect(res.status).toBe(401);
       expect(res.body.success).toBe(false);

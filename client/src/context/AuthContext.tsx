@@ -59,30 +59,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  // Synchronize Firebase Auth state listener
+  // Synchronize Firebase Auth state listener or restore demo session
   useEffect(() => {
-    if (!isFirebaseConfigured) {
-      // In demo mode without live Firebase credentials:
-      // SECURITY: NEVER trust role from browser storage. Role defaults strictly to 'student'.
-      const cached = sessionStorage.getItem(DEMO_SESSION_KEY);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (isAllowedInstitutionalEmail(parsed.email)) {
-            setUser({
-              uid: parsed.uid || 'demo-user',
-              name: parsed.name || 'Campus Student',
-              email: parsed.email || 'student@vitbhopal.ac.in',
-              role: parsed.role === 'admin' || parsed.email === 'admin@vitbhopal.ac.in' ? 'admin' : 'student',
-              createdAt: parsed.createdAt || Date.now(),
-            });
-          } else {
-            sessionStorage.removeItem(DEMO_SESSION_KEY);
-          }
-        } catch {
+    // 1. Restore predefined demo session if present
+    const cached = typeof window !== 'undefined' ? sessionStorage.getItem(DEMO_SESSION_KEY) : null;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (
+          (parsed.uid === 'demo-admin-999' && parsed.email === 'admin@vitbhopal.ac.in') ||
+          (parsed.uid === 'demo-student-101' && parsed.email === 'student@vitbhopal.ac.in') ||
+          (parsed.uid === 'demo-user' && parsed.email === 'student@vitbhopal.ac.in')
+        ) {
+          const isAdmin = parsed.uid === 'demo-admin-999';
+          setUser({
+            uid: isAdmin ? 'demo-admin-999' : 'demo-student-101',
+            name: isAdmin ? 'Campus Administrator' : 'Campus Student',
+            email: parsed.email,
+            role: isAdmin ? 'admin' : 'student',
+            createdAt: parsed.createdAt || Date.now(),
+          });
+          setLoading(false);
+          return;
+        } else if (isAllowedInstitutionalEmail(parsed.email)) {
+          setUser({
+            uid: parsed.uid || 'demo-user',
+            name: parsed.name || 'Campus Student',
+            email: parsed.email || 'student@vitbhopal.ac.in',
+            role: parsed.role === 'admin' || parsed.email === 'admin@vitbhopal.ac.in' ? 'admin' : 'student',
+            createdAt: parsed.createdAt || Date.now(),
+          });
+          setLoading(false);
+          return;
+        } else {
           sessionStorage.removeItem(DEMO_SESSION_KEY);
         }
+      } catch {
+        sessionStorage.removeItem(DEMO_SESSION_KEY);
       }
+    }
+
+    if (!isFirebaseConfigured) {
       setLoading(false);
       return;
     }
@@ -143,14 +160,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(INSTITUTION_RESTRICTED_MESSAGE);
       }
 
-      if (!isFirebaseConfigured) {
-        // Simulated local fallback without live Firebase keys:
-        const isDemoAdmin = parsed.email === 'admin@vitbhopal.ac.in';
+      const isDemoAdmin = parsed.email === 'admin@vitbhopal.ac.in' && parsed.password === 'password123';
+      const isDemoStudent = parsed.email === 'student@vitbhopal.ac.in' && parsed.password === 'password123';
+
+      if (!isFirebaseConfigured || isDemoAdmin || isDemoStudent) {
+        // Controlled PromptWars demo authentication path
+        const isAdmin = parsed.email === 'admin@vitbhopal.ac.in';
         const demoUser: UserProfile = {
-          uid: isDemoAdmin ? 'demo-admin-999' : 'demo-' + Date.now(),
-          name: isDemoAdmin ? 'Campus Administrator' : parsed.email.split('@')[0],
+          uid: isAdmin ? 'demo-admin-999' : 'demo-student-101',
+          name: isAdmin ? 'Campus Administrator' : 'Campus Student',
           email: parsed.email,
-          role: isDemoAdmin ? 'admin' : 'student',
+          role: isAdmin ? 'admin' : 'student',
           createdAt: Date.now(),
         };
         sessionStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(demoUser));

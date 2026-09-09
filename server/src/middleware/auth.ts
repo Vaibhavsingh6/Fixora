@@ -11,6 +11,45 @@ export interface AuthenticatedUser {
   emailVerified: boolean;
 }
 
+/**
+ * Authoritative whitelist of predefined PromptWars demo identities.
+ * SECURITY: Identities and roles are defined strictly on the server.
+ * Client-supplied role claims are completely ignored to prevent privilege escalation.
+ */
+export const PREDEFINED_DEMO_IDENTITIES: Record<string, AuthenticatedUser> = {
+  'demo-admin-999': {
+    uid: 'demo-admin-999',
+    email: 'admin@vitbhopal.ac.in',
+    role: 'admin',
+    emailVerified: true,
+  },
+  'demo-student-101': {
+    uid: 'demo-student-101',
+    email: 'student@vitbhopal.ac.in',
+    role: 'student',
+    emailVerified: true,
+  },
+  // Backwards-compatible alias for existing test fixtures:
+  'demo-user': {
+    uid: 'demo-student-101',
+    email: 'student@vitbhopal.ac.in',
+    role: 'student',
+    emailVerified: true,
+  },
+};
+
+/**
+ * Checks if controlled DEMO_MODE is active.
+ * In production, DEMO_MODE must be explicitly set to 'true'.
+ * In test or development environments, fixtures are permitted for automated testing/local dev.
+ */
+export function isDemoModeActive(): boolean {
+  if (process.env.DEMO_MODE === 'true' || process.env.ENABLE_DEMO_MODE === 'true') {
+    return true;
+  }
+  return process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development';
+}
+
 declare global {
   namespace Express {
     interface Request {
@@ -43,22 +82,47 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     let tokenRole: UserRole | undefined;
     let emailVerified = false;
 
-    // Demo/test fixture tokens handling: Strictly forbidden in production
+    // Demo/test fixture tokens handling: Strictly controlled by DEMO_MODE
     const isFixtureToken = token.startsWith('test-token:') || token.startsWith('demo-token:');
 
     if (isFixtureToken) {
-      if (process.env.NODE_ENV === 'production') {
-        console.warn('[Auth] Token verification failed: Demo/fixture token rejected in production environment.');
+      if (!isDemoModeActive()) {
+        console.warn('[Auth] Token verification failed: Demo tokens are disabled in production.');
         next(new AppError('Invalid or expired authentication token', 401));
         return;
       }
 
-      // Secure testing and local development fixture support
-      const parts = token.split(':');
-      decodedUid = parts[1] || 'demo-user';
-      tokenRole = parts[2] === 'admin' ? 'admin' : 'student';
-      decodedEmail = parts[3] || `${decodedUid}@vitbhopal.ac.in`;
-      emailVerified = parts[4] !== undefined ? parts[4] === 'true' : true;
+      // 1. In automated unit test runs, support dynamic test-token fixtures
+      if (process.env.NODE_ENV === 'test' && token.startsWith('test-token:')) {
+        const parts = token.split(':');
+        decodedUid = parts[1] || 'test-user';
+        tokenRole = parts[2] === 'admin' ? 'admin' : 'student';
+        decodedEmail = parts[3] || `${decodedUid}@vitbhopal.ac.in`;
+        emailVerified = parts[4] !== undefined ? parts[4] === 'true' : true;
+      } else {
+        // 2. Production & Controlled Demo Mode: Strictly validate against predefined accounts
+        if (!token.startsWith('demo-token:')) {
+          console.warn('[Auth] Token verification failed: Test fixture token rejected outside test runner.');
+          next(new AppError('Invalid or expired authentication token', 401));
+          return;
+        }
+
+        const parts = token.split(':');
+        const requestedUid = parts[1] || '';
+        const predefinedIdentity = PREDEFINED_DEMO_IDENTITIES[requestedUid];
+
+        if (!predefinedIdentity) {
+          console.warn('[Auth] Token verification failed: Unrecognized demo account identity.');
+          next(new AppError('Invalid or expired authentication token', 401));
+          return;
+        }
+
+        // Authoritatively assign identity (NEVER trust client-supplied roles or emails)
+        decodedUid = predefinedIdentity.uid;
+        decodedEmail = predefinedIdentity.email;
+        tokenRole = predefinedIdentity.role;
+        emailVerified = predefinedIdentity.emailVerified;
+      }
     } else {
       let decoded;
       try {
